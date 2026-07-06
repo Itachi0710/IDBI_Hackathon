@@ -27,15 +27,11 @@ N_MSMES = 350
 SEED = 42
 rng = np.random.default_rng(SEED)
 
-# Each archetype represents a realistic MSME segment. `mu`/`sigma` define
-# a normal distribution over the hidden true_health score for that segment.
 ARCHETYPES = {
     "stable_growth": dict(p=0.25, mu=75, sigma=8),
     "seasonal": dict(p=0.20, mu=60, sigma=12),
     "declining": dict(p=0.15, mu=35, sigma=10),
-    "credit_invisible_viable": dict(
-        p=0.25, mu=68, sigma=10
-    ),  # the segment we most want to catch
+    "credit_invisible_viable": dict(p=0.25, mu=68, sigma=10),
     "high_risk_ntc": dict(p=0.15, mu=30, sigma=15),
 }
 
@@ -58,12 +54,12 @@ def correlated_feature(
     for array ops over `for` loops when generating or transforming tabular
     data -- it's one of the highest-leverage habits in data engineering.
     """
-    z = (health_0_100 - 50) / 25  # standardize health to ~[-2, 2]
+    z = (health_0_100 - 50) / 25
     if invert:
         z = -z
     noise = rng.normal(0, 1, size=len(health_0_100))
     signal = rho * z + np.sqrt(max(1 - rho**2, 0)) * noise
-    pct = 1 / (1 + np.exp(-signal))  # sigmoid squashes signal into (0, 1)
+    pct = 1 / (1 + np.exp(-signal))
     return lo + pct * (hi - lo)
 
 
@@ -79,8 +75,8 @@ def generate_dataset(n: int = N_MSMES) -> pd.DataFrame:
     df = pd.DataFrame(
         {
             "msme_id": [f"MSME{i:05d}" for i in range(n)],
-            "archetype": archetype,  # ground truth - NOT a model input
-            "true_health": true_health.round(1),  # ground truth - NOT a model input
+            "archetype": archetype,
+            "true_health": true_health.round(1),
         }
     )
 
@@ -132,11 +128,6 @@ def generate_dataset(n: int = N_MSMES) -> pd.DataFrame:
         true_health, rho=0.35, lo=-10, hi=25
     ).round(1)
 
-    # --- Label: did this MSME default within 12 months? ---
-    # Logistic function of true_health -> probability, then a Bernoulli draw.
-    # This keeps the label PROBABILISTIC rather than a hard threshold, so
-    # even healthy businesses occasionally default (real-world noise) and
-    # some risky ones survive -- avoiding an unrealistically "easy" dataset.
     default_prob = 1 / (1 + np.exp((true_health - 45) / 10))
     df["defaulted_12m"] = rng.binomial(1, default_prob)
 
@@ -158,7 +149,9 @@ if __name__ == "__main__":
         .round(3)
     )
 
-    out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "msme_synthetic_data.csv")
+    out_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "msme_synthetic_data.csv"
+    )
     data.to_csv(out_path, index=False)
     print(f"\nSaved to {out_path}")
     print(

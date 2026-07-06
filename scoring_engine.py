@@ -21,7 +21,9 @@ import xgboost as xgb
 from sklearn.model_selection import train_test_split
 
 
-def normalize(series: pd.Series, lo: float, hi: float, invert: bool = False) -> pd.Series:
+def normalize(
+    series: pd.Series, lo: float, hi: float, invert: bool = False
+) -> pd.Series:
     """Min-max normalize a column to 0-100 against FIXED bounds, clipping outliers."""
     clipped = series.clip(lo, hi)
     pct = (clipped - lo) / (hi - lo)
@@ -30,7 +32,6 @@ def normalize(series: pd.Series, lo: float, hi: float, invert: bool = False) -> 
     return (pct * 100).round(1)
 
 
-# (column, lo, hi, invert) -- invert=True means LOWER raw value is BETTER
 DIMENSION_CONFIG = {
     "revenue_stability_score": {
         "weights": {"gst_turnover_lakhs_avg": 0.4, "gst_turnover_growth_yoy_pct": 0.6},
@@ -40,7 +41,11 @@ DIMENSION_CONFIG = {
         },
     },
     "cash_flow_health_score": {
-        "weights": {"net_margin_pct": 0.45, "cash_flow_volatility_cv": 0.30, "bounce_rate_pct": 0.25},
+        "weights": {
+            "net_margin_pct": 0.45,
+            "cash_flow_volatility_cv": 0.30,
+            "bounce_rate_pct": 0.25,
+        },
         "bounds": {
             "net_margin_pct": (-20, 40, False),
             "cash_flow_volatility_cv": (0.05, 0.90, True),
@@ -48,8 +53,11 @@ DIMENSION_CONFIG = {
         },
     },
     "compliance_score": {
-        "weights": {"gst_filing_delay_days_avg": 0.35, "gst_filing_consistency_pct": 0.35,
-                     "epfo_pf_compliance_score": 0.30},
+        "weights": {
+            "gst_filing_delay_days_avg": 0.35,
+            "gst_filing_consistency_pct": 0.35,
+            "epfo_pf_compliance_score": 0.30,
+        },
         "bounds": {
             "gst_filing_delay_days_avg": (0, 45, True),
             "gst_filing_consistency_pct": (40, 100, False),
@@ -57,7 +65,10 @@ DIMENSION_CONFIG = {
         },
     },
     "growth_momentum_score": {
-        "weights": {"epfo_employee_growth_yoy_pct": 0.55, "epfo_avg_wage_growth_yoy_pct": 0.45},
+        "weights": {
+            "epfo_employee_growth_yoy_pct": 0.55,
+            "epfo_avg_wage_growth_yoy_pct": 0.45,
+        },
         "bounds": {
             "epfo_employee_growth_yoy_pct": (-40, 50, False),
             "epfo_avg_wage_growth_yoy_pct": (-10, 25, False),
@@ -72,7 +83,6 @@ DIMENSION_CONFIG = {
     },
 }
 
-# Weights for blending the 5 dimensions into one composite rule-based score.
 COMPOSITE_WEIGHTS = {
     "revenue_stability_score": 0.20,
     "cash_flow_health_score": 0.25,
@@ -85,16 +95,11 @@ COMPOSITE_WEIGHTS = {
 def add_dimension_scores(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
-    # CREDIT SCORING SAFETY: guard the denominator before dividing.
-    # If upi_aa_avg_monthly_inflow_lakhs is 0 (possible for a real applicant),
-    # the division produces inf/NaN which silently propagates through all
-    # dimension scores. NaN comparisons (e.g. NaN >= 70) are ALWAYS False, so a
-    # broken record would be silently bucketed as "High risk" with no audit
-    # trail -- dangerous in a credit-scoring context. Floor to epsilon instead.
     _inflow = df["upi_aa_avg_monthly_inflow_lakhs"].replace(0, 1e-9)
     df["net_margin_pct"] = (
         (df["upi_aa_avg_monthly_inflow_lakhs"] - df["upi_aa_avg_monthly_outflow_lakhs"])
-        / _inflow * 100
+        / _inflow
+        * 100
     ).round(1)
 
     for dim_name, cfg in DIMENSION_CONFIG.items():
@@ -106,7 +111,6 @@ def add_dimension_scores(df: pd.DataFrame) -> pd.DataFrame:
 
         df[dim_name] = sum(df[c] * w for c, w in normalized_cols).round(1)
 
-    # Drop the temporary _norm_ helper columns, keep the final dimension scores
     df = df.drop(columns=[c for c in df.columns if c.startswith("_norm_")])
 
     df["composite_rule_score"] = sum(
@@ -116,13 +120,6 @@ def add_dimension_scores(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ---------------------------------------------------------------------------
-# ML scoring layer
-# ---------------------------------------------------------------------------
-
-# Raw alternate-data input columns used to train the XGBoost model.
-# These are the observable GST / UPI-AA / EPFO fields -- NOT the derived
-# dimension scores, and NOT the ground-truth columns (archetype, true_health).
 RAW_FEATURES = [
     "gst_turnover_lakhs_avg",
     "gst_turnover_growth_yoy_pct",
@@ -179,19 +176,11 @@ def build_explainer(model, X: pd.DataFrame):
     return explainer, shap_values
 
 
-# ---------------------------------------------------------------------------
-# Named constants -- change these in ONE place instead of hunting magic numbers.
-# ---------------------------------------------------------------------------
+RISK_TIER_LOW_CUTOFF = 65
+RISK_TIER_MEDIUM_CUTOFF = 45
 
-# Risk-tier cutoffs applied to the final blended health score (0-100).
-RISK_TIER_LOW_CUTOFF = 65       # >= this => "Low risk"
-RISK_TIER_MEDIUM_CUTOFF = 45    # >= this (and < LOW) => "Medium risk"
-
-# Rule-based vs ML blend in the final health score.
-# 50/50 is deliberately transparent for a demo; in production you would tune
-# this ratio once you have labelled ground-truth outcomes.
 BLEND_WEIGHT_RULE = 0.5
-BLEND_WEIGHT_ML   = 0.5
+BLEND_WEIGHT_ML = 0.5
 
 
 def _risk_tier(score: float) -> str:
@@ -204,8 +193,6 @@ def _risk_tier(score: float) -> str:
 
 def generate_health_card(row: pd.Series, model, explainer) -> dict:
     """Generate a complete health-card dict for a single enriched MSME row."""
-    # Validate required columns are present before touching pandas -- a missing
-    # column would otherwise surface as an opaque KeyError deep inside pandas.
     required = RAW_FEATURES + ["composite_rule_score"]
     missing = [c for c in required if c not in row.index]
     if missing:
@@ -219,11 +206,12 @@ def generate_health_card(row: pd.Series, model, explainer) -> dict:
     ml_default_pct = round(default_prob * 100, 1)
 
     composite = round(float(row["composite_rule_score"]), 1)
-    final_score = round(BLEND_WEIGHT_RULE * composite + BLEND_WEIGHT_ML * ml_health_score, 1)
+    final_score = round(
+        BLEND_WEIGHT_RULE * composite + BLEND_WEIGHT_ML * ml_health_score, 1
+    )
 
     dim_scores = {d: round(float(row[d]), 1) for d in _DIMENSION_SCORES}
 
-    # SHAP: positive value = pushes toward default = risk; negative = strength
     sv = explainer.shap_values(X)[0]  # shape (n_features,)
     contributions = sorted(zip(RAW_FEATURES, sv), key=lambda x: x[1])
 
@@ -254,8 +242,6 @@ def generate_health_card(row: pd.Series, model, explainer) -> dict:
 
 def score_portfolio(df: pd.DataFrame, model) -> pd.DataFrame:
     """Score all MSMEs in a dataframe, adding ml/final score columns."""
-    # Validate required columns up-front to give a clear error instead of a
-    # raw KeyError if a future data-source integration drops a field.
     required = RAW_FEATURES + ["composite_rule_score"]
     missing = [c for c in required if c not in df.columns]
     if missing:
@@ -268,17 +254,24 @@ def score_portfolio(df: pd.DataFrame, model) -> pd.DataFrame:
     df["ml_default_probability"] = (default_probs * 100).round(1)
     df["ml_health_score"] = ((1 - default_probs) * 100).round(1)
     df["final_health_score"] = (
-        BLEND_WEIGHT_RULE * df["composite_rule_score"] + BLEND_WEIGHT_ML * df["ml_health_score"]
+        BLEND_WEIGHT_RULE * df["composite_rule_score"]
+        + BLEND_WEIGHT_ML * df["ml_health_score"]
     ).round(1)
     df["risk_tier"] = df["final_health_score"].apply(_risk_tier)
     return df
 
 
 if __name__ == "__main__":
-    _csv = os.path.join(os.path.dirname(os.path.abspath(__file__)), "msme_synthetic_data.csv")
+    _csv = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "msme_synthetic_data.csv"
+    )
     raw = pd.read_csv(_csv)
     enriched = add_dimension_scores(raw)
     dims = list(DIMENSION_CONFIG.keys()) + ["composite_rule_score"]
-    print(enriched[["msme_id", "archetype", "true_health"] + dims].head(8).to_string(index=False))
+    print(
+        enriched[["msme_id", "archetype", "true_health"] + dims]
+        .head(8)
+        .to_string(index=False)
+    )
     enriched.to_csv(_csv, index=False)
     print("\nSaved enriched dataset with dimension scores.")
