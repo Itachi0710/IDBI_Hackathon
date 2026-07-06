@@ -18,6 +18,8 @@ the truth. High-rho features are strong signals; low-rho features are
 weak/noisy signals -- exactly what you'd expect from real alternate data.
 """
 
+import os
+
 import numpy as np
 import pandas as pd
 
@@ -156,7 +158,7 @@ if __name__ == "__main__":
         .round(3)
     )
 
-    out_path = "/Users/a.shrivastava/Desktop/HAckatoh/IDBI_Hackathon/msme_health_card/msme_synthetic_data.csv"
+    out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "msme_synthetic_data.csv")
     data.to_csv(out_path, index=False)
     print(f"\nSaved to {out_path}")
     print(

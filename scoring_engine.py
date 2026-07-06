@@ -12,6 +12,8 @@ a property real credit scores must have. This is a common beginner mistake
 in scoring systems worth remembering.
 """
 
+import os
+
 import numpy as np
 import pandas as pd
 import shap
@@ -273,9 +275,10 @@ def score_portfolio(df: pd.DataFrame, model) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    raw = pd.read_csv("/Users/a.shrivastava/Desktop/HAckatoh/IDBI_Hackathon/msme_health_card/msme_synthetic_data.csv")
+    _csv = os.path.join(os.path.dirname(os.path.abspath(__file__)), "msme_synthetic_data.csv")
+    raw = pd.read_csv(_csv)
     enriched = add_dimension_scores(raw)
     dims = list(DIMENSION_CONFIG.keys()) + ["composite_rule_score"]
     print(enriched[["msme_id", "archetype", "true_health"] + dims].head(8).to_string(index=False))
-    enriched.to_csv("/Users/a.shrivastava/Desktop/HAckatoh/IDBI_Hackathon/msme_health_card/msme_synthetic_data.csv", index=False)
+    enriched.to_csv(_csv, index=False)
     print("\nSaved enriched dataset with dimension scores.")

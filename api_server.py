@@ -123,8 +123,8 @@ from feature_engineering import add_dimension_scores
 # )
 # logger = logging.getLogger(__name__)
 
-# from msme_health_card.feature_engineering import add_dimension_scores
-from msme_health_card.scoring_engine import (
+# from feature_engineering import add_dimension_scores
+from scoring_engine import (
     RAW_FEATURES, build_explainer, generate_health_card, score_portfolio, train_model,
 )
 
