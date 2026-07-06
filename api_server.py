@@ -51,7 +51,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from msme_health_card.feature_engineering import add_dimension_scores
+from feature_engineering import add_dimension_scores
 # ... rest of your original code ...
 
 # import logging

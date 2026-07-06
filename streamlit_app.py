@@ -41,7 +41,7 @@ import plotly.graph_objects as go
 # Streamlit to point the dashboard at a different host or port without
 # touching any Python file.
 # ---------------------------------------------------------------------------
-API_BASE_URL = os.environ.get("MSME_API_URL", "http://localhost:8000")
+API_BASE_URL = os.environ.get("MSME_API_URL", "https://idbi-hackathon.onrender.com")
 
 st.set_page_config(page_title="MSME Financial Health Card", layout="wide")
 
